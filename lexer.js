@@ -1,153 +1,146 @@
 // Copyright 2016, 2015, 2014 Ryan Marcus
 // This file is part of dirty-json.
-// 
+//
 // dirty-json is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // dirty-json is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with dirty-json.  If not, see <http://www.gnu.org/licenses/>.
 
 "use strict";
 
-const Q = require("q");
-const Lexer = require("lex");
-const unescapeJs = require("unescape-js");
-const utf8 = require("utf8");
+var Q = require("q");
+var Lexer = require("lex");
+var unescapeJs = require("unescape-js");
+var utf8 = require("utf8");
 
 // terminals
-const LEX_KV = 0;
-const LEX_KVLIST = 1;
-const LEX_VLIST = 2;
-const LEX_BOOLEAN = 3;
-const LEX_COVALUE = 4;
-const LEX_CVALUE = 5;
-const LEX_FLOAT = 6;
-const LEX_INT = 7;
-const LEX_KEY = 8;
-const LEX_LIST = 9;
-const LEX_OBJ = 10;
-const LEX_QUOTE = 11;
-const LEX_RB = 12;
-const LEX_RCB = 13;
-const LEX_TOKEN = 14;
-const LEX_VALUE = 15;
+var LEX_KV = 0;
+var LEX_KVLIST = 1;
+var LEX_VLIST = 2;
+var LEX_BOOLEAN = 3;
+var LEX_COVALUE = 4;
+var LEX_CVALUE = 5;
+var LEX_FLOAT = 6;
+var LEX_INT = 7;
+var LEX_KEY = 8;
+var LEX_LIST = 9;
+var LEX_OBJ = 10;
+var LEX_QUOTE = 11;
+var LEX_RB = 12;
+var LEX_RCB = 13;
+var LEX_TOKEN = 14;
+var LEX_VALUE = 15;
 
 // non-terminals
-const LEX_COLON = -1;
-const LEX_COMMA = -2;
-const LEX_LCB = -3;
-const LEX_LB = -4;
-const LEX_DOT = -5;
+var LEX_COLON = -1;
+var LEX_COMMA = -2;
+var LEX_LCB = -3;
+var LEX_LB = -4;
+var LEX_DOT = -5;
 
-
-const lexMap = {
-    ":": {type: LEX_COLON},
-    ",": {type: LEX_COMMA},
-    "{": {type: LEX_LCB},
-    "}": {type: LEX_RCB},
-    "[": {type: LEX_LB},
-    "]": {type: LEX_RB},
-    ".": {type: LEX_DOT} // TODO: remove?
+var lexMap = {
+  ":": { type: LEX_COLON },
+  ",": { type: LEX_COMMA },
+  "{": { type: LEX_LCB },
+  "}": { type: LEX_RCB },
+  "[": { type: LEX_LB },
+  "]": { type: LEX_RB },
+  ".": {
+    type: LEX_DOT // TODO: remove?
+  }
 };
 
-const lexSpc = [
-    [/:/, LEX_COLON],
-    [/,/, LEX_COMMA],
-    [/{/, LEX_LCB],
-    [/}/, LEX_RCB],
-    [/\[/, LEX_LB],
-    [/\]/, LEX_RB],
-    [/\./, LEX_DOT] // TODO: remove?
+var lexSpc = [
+  [/:/, LEX_COLON],
+  [/,/, LEX_COMMA],
+  [/{/, LEX_LCB],
+  [/}/, LEX_RCB],
+  [/\[/, LEX_LB],
+  [/\]/, LEX_RB],
+  [/\./, LEX_DOT] // TODO: remove?
 ];
 
 function parseString(str) {
-    // unescape-js doesn't cover the \/ case, but we will here.
-    str = str.replace(/\\\//, '/');
-    return unescapeJs(str);
+  // unescape-js doesn't cover the \/ case, but we will here.
+  str = str.replace(/\\\//, "/");
+  return unescapeJs(str);
 }
-
 
 function getLexer(string) {
-    let lexer = new Lexer();
-    lexer.addRule(/"((?:\\.|[^"])*)($|")/, (lexeme, txt) => {
-        return {type: LEX_QUOTE, value: parseString(txt)};
+  var lexer = new Lexer();
+  lexer.addRule(/"((?:\\.|[^"])*)($|")/, function(lexeme, txt) {
+    return { type: LEX_QUOTE, value: parseString(txt) };
+  });
+
+  lexer.addRule(/'((?:\\.|[^'])*)($|')/, function(lexeme, txt) {
+    return { type: LEX_QUOTE, value: parseString(txt) };
+  });
+
+  // floats with a dot
+  lexer.addRule(/[\-0-9]*\.[0-9]*([eE][\+\-]?)?[0-9]*/, function(lexeme) {
+    return { type: LEX_FLOAT, value: parseFloat(lexeme) };
+  });
+
+  // floats without a dot but with e notation
+  lexer.addRule(/\-?[0-9]+([eE][\+\-]?)[0-9]*/, function(lexeme) {
+    return { type: LEX_FLOAT, value: parseFloat(lexeme) };
+  });
+
+  lexer.addRule(/[\-0-9]+/, function(lexeme) {
+    return { type: LEX_INT, value: parseInt(lexeme) };
+  });
+
+  lexSpc.forEach(function(item) {
+    lexer.addRule(item[0], function(lexeme) {
+      return { type: item[1], value: lexeme };
     });
+  });
 
-    lexer.addRule(/'((?:\\.|[^'])*)($|')/, (lexeme, txt) => {
-        return {type: LEX_QUOTE, value: parseString(txt)};
-    });
+  lexer.addRule(/\s/, function(lexeme) {
+    // chomp whitespace...
+  });
 
-    // floats with a dot
-    lexer.addRule(/[\-0-9]*\.[0-9]*([eE][\+\-]?)?[0-9]*/, lexeme => {
-        return {type: LEX_FLOAT, value: parseFloat(lexeme)};
-    });
+  lexer.addRule(/./, function(lexeme) {
+    var lt = LEX_TOKEN;
+    var val = lexeme;
 
-    // floats without a dot but with e notation
-    lexer.addRule(/\-?[0-9]+([eE][\+\-]?)[0-9]*/, lexeme => {
-        return {type: LEX_FLOAT, value: parseFloat(lexeme)};
-    });
-    
-    lexer.addRule(/[\-0-9]+/, lexeme => {
-        return {type: LEX_INT, value: parseInt(lexeme)};
-    });
+    return { type: lt, value: val };
+  });
 
-    lexSpc.forEach(item => {
-        lexer.addRule(item[0], lexeme => {
-            return {type: item[1], value: lexeme};
-        });
-    });
+  lexer.setInput(string);
 
-    lexer.addRule(/\s/, lexeme => {
-        // chomp whitespace...
-    });
-
-    lexer.addRule(/./, lexeme => {
-        let lt = LEX_TOKEN;
-        let val = lexeme;
-
-
-        return {type: lt, value: val};
-    });
-
-    lexer.setInput(string);
-
-    return lexer;
+  return lexer;
 }
-
-
 
 module.exports.lexString = lexString;
 function lexString(str, emit) {
-    let lex = getLexer(str);
+  var lex = getLexer(str);
 
-    let token = "";
-    while ((token = lex.lex())) {
-        emit(token);
-    }
-    
+  var token = "";
+  while ((token = lex.lex())) {
+    emit(token);
+  }
 }
 
 module.exports.getAllTokens = getAllTokens;
 function getAllTokens(str) {
-    let toR = Q.defer();
+  var toR = Q.defer();
 
-    let arr = [];
-    let emit = function (i) {
-        arr.push(i);
-    };
+  var arr = [];
+  var emit = function emit(i) {
+    arr.push(i);
+  };
 
-    lexString(str, emit);
+  lexString(str, emit);
 
-    toR.resolve(arr);
-    return toR.promise;
+  toR.resolve(arr);
+  return toR.promise;
 }
-
-
-
