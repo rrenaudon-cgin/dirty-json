@@ -1,6 +1,6 @@
 {
   "name": "dirty-json",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "A permissive parser for dirty JSON data that does its best",
   "main": "dirty-json.js",
   "engines": {
@@ -30,10 +30,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/RyanMarcus/dirty-json.git"
+    "url": "https://github.com/rrenaudon-cgin/dirty-json.git"
   },
   "jshintConfig": {
-    "esversion": 6,
+    "esversion": 5,
     "node": true
   }
 }
